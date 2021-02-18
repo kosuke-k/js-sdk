@@ -1,7 +1,9 @@
 import { csvPrinter } from "./csvPrinter";
 import { jsonPrinter } from "./jsonPrinter";
 
-export const buildPrinter = (type = "json") => {
+type PrinterType = "json" | "csv";
+
+export const buildPrinter = (type: PrinterType = "json") => {
   switch (type) {
     case "json": {
       return jsonPrinter;

@@ -2,7 +2,10 @@ import { promises as fs } from "fs";
 import path from "path";
 import PQueue from "p-queue";
 
-import { KintoneRestAPIClient } from "@kintone/rest-api-client";
+import {
+  KintoneRestAPIClient,
+  KintoneFormFieldProperty,
+} from "@kintone/rest-api-client";
 import { AppID, Record } from "@kintone/rest-api-client/lib/client/types";
 import { buildRestAPIClient, RestAPIClientOptions } from "../api";
 import { buildPrinter } from "../printers";
@@ -22,8 +25,9 @@ type FileInfo = {
 export const run = async (argv: RestAPIClientOptions & Options) => {
   const apiClient = buildRestAPIClient(argv);
   const records = await exportRecords(apiClient, argv);
+  const fields = await getFields(apiClient, argv);
   const printer = buildPrinter(argv.format);
-  printer(records);
+  printer(records, fields);
 };
 
 export async function exportRecords(
@@ -87,4 +91,11 @@ const downloadAttachments = async (
   const dir = path.resolve(attachmentDir, recordId);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.resolve(dir, name), Buffer.from(file));
+};
+
+const getFields = async (apiClient: KintoneRestAPIClient, options: Options) => {
+  const fields: {
+    properties: { [k: string]: KintoneFormFieldProperty.OneOf };
+  } = await apiClient.app.getFormFields(options);
+  return fields;
 };

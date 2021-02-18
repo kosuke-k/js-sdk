@@ -1,11 +1,17 @@
-import { KintoneRecordField } from "@kintone/rest-api-client";
+import {
+  KintoneRecordField,
+  KintoneFormFieldProperty,
+} from "@kintone/rest-api-client";
 
-type KintoneRecords = Array<{ [k: string]: KintoneRecordField.OneOf }>;
+type KintoneRecord = Record<string, KintoneRecordField.OneOf>;
+type KintoneFormFields = {
+  properties: { [k: string]: KintoneFormFieldProperty.OneOf };
+};
 
 const LINE_BREAK = "\n";
 const SEPARATOR = ",";
 
-const isSupportedFieldType = (field: KintoneRecordField.OneOf) => {
+const isSupportedFieldType = (field: KintoneFormFieldProperty.OneOf) => {
   const supportedFieldTypes = [
     "RECORD_NUMBER",
     "SINGLE_LINE_TEXT",
@@ -43,55 +49,77 @@ const escapeQuotation = (fieldValue: string) => fieldValue.replace(/"/g, '""');
 const encloseInQuotation = (fieldValue: string | null) =>
   `"${fieldValue ? escapeQuotation(fieldValue) : ""}"`;
 
-const extractFieldCodes = (records: KintoneRecords) => {
-  const firstRecord = records.slice().shift();
-  if (!firstRecord) return [];
-  return Object.keys(firstRecord).filter((key) =>
-    isSupportedFieldType(firstRecord[key])
+const extractFieldCodes = (fields: KintoneFormFields) => {
+  return Object.keys(fields.properties).filter((fieldCode) =>
+    isSupportedFieldType(fields.properties[fieldCode])
   );
 };
 
-const lexer = (field: KintoneRecordField.OneOf) => {
-  switch (field.type) {
-    case "RECORD_NUMBER":
-    case "SINGLE_LINE_TEXT":
-    case "RADIO_BUTTON":
-    case "MULTI_LINE_TEXT":
-    case "NUMBER":
-    case "RICH_TEXT":
-    case "LINK":
-    case "DROP_DOWN":
-    case "CALC":
-      return encloseInQuotation(field.value);
-    case "CREATOR":
-    case "MODIFIER":
-      return encloseInQuotation(field.value.code);
-    case "UPDATED_TIME":
-    case "CREATED_TIME":
-      return encloseInQuotation(formatDateFieldValue(field.value));
-    case "MULTI_SELECT":
-    case "CHECK_BOX":
-      return encloseInQuotation(JSON.stringify(field.value));
-    default:
-      return field.value;
-  }
+const createRowData = ({
+  record,
+  fields,
+  fieldCodes,
+}: {
+  record: KintoneRecord;
+  fields: KintoneFormFields;
+  fieldCodes: string[];
+}) => {
+  return fieldCodes.reduce<Record<string, string | null>>((row, fieldCode) => {
+    const field = record[fieldCode];
+    const label = fields.properties[fieldCode].label;
+    switch (field.type) {
+      case "RECORD_NUMBER":
+      case "SINGLE_LINE_TEXT":
+      case "RADIO_BUTTON":
+      case "MULTI_LINE_TEXT":
+      case "NUMBER":
+      case "RICH_TEXT":
+      case "LINK":
+      case "DROP_DOWN":
+      case "CALC":
+        row[label] = field.value;
+        break;
+      case "UPDATED_TIME":
+      case "CREATED_TIME":
+        row[label] = formatDateFieldValue(field.value);
+        break;
+      case "CREATOR":
+      case "MODIFIER":
+        row[label] = field.value.code;
+        break;
+      case "MULTI_SELECT":
+      case "CHECK_BOX":
+        Object.keys(
+          (fields.properties[fieldCode] as
+            | KintoneFormFieldProperty.MultiSelect
+            | KintoneFormFieldProperty.CheckBox).options
+        ).forEach((option) => {
+          row[`${label}[${option}]`] = field.value.includes(option) ? "1" : "";
+        });
+        break;
+    }
+    return row;
+  }, {});
 };
 
-export const convertKintoneRecordsToCsv = (records: KintoneRecords) => {
-  const fieldCodes = extractFieldCodes(records);
+export const convertKintoneRecordsToCsv = (
+  records: KintoneRecord[],
+  fields: KintoneFormFields
+) => {
+  const fieldCodes = extractFieldCodes(fields);
 
-  const header = fieldCodes
-    .map((fieldCode) => encloseInQuotation(fieldCode))
-    .join(SEPARATOR);
-
-  const rows = records
+  const rowsData = records
     .slice()
     .reverse()
-    .map((record) => {
-      return fieldCodes
-        .map((fieldCode) => lexer(record[fieldCode]))
-        .join(SEPARATOR);
-    });
+    .map((record) => createRowData({ record, fields, fieldCodes }));
+
+  const header = Object.keys(rowsData[0])
+    .map((label) => encloseInQuotation(label))
+    .join(SEPARATOR);
+
+  const rows = rowsData.map((row) =>
+    Object.values(row).map(encloseInQuotation).join(SEPARATOR)
+  );
 
   return (
     [header, ...rows].join(LINE_BREAK).replace(/\r?\n/gm, LINE_BREAK) +
@@ -100,7 +128,8 @@ export const convertKintoneRecordsToCsv = (records: KintoneRecords) => {
 };
 
 export const csvPrinter = (
-  records: Array<{ [k: string]: KintoneRecordField.OneOf }>
+  records: KintoneRecord[],
+  fields: KintoneFormFields
 ) => {
-  console.log(convertKintoneRecordsToCsv(records));
+  console.log(convertKintoneRecordsToCsv(records, fields));
 };
