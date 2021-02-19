@@ -93,9 +93,20 @@ const createRowData = ({
           (fields.properties[fieldCode] as
             | KintoneFormFieldProperty.MultiSelect
             | KintoneFormFieldProperty.CheckBox).options
-        ).forEach((option) => {
-          row[`${label}[${option}]`] = field.value.includes(option) ? "1" : "";
-        });
+        )
+          .sort((a, b) => {
+            const { options } = fields.properties[fieldCode] as
+              | KintoneFormFieldProperty.MultiSelect
+              | KintoneFormFieldProperty.CheckBox;
+            return (
+              parseInt(options[a].index, 10) - parseInt(options[b].index, 10)
+            );
+          })
+          .forEach((option) => {
+            row[`${label}[${option}]`] = field.value.includes(option)
+              ? "1"
+              : "";
+          });
         break;
     }
     return row;
